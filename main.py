@@ -78,16 +78,14 @@ class WebsocketApp:
     async def send_user_data(self, websocket: WebSocket):
         await websocket.send_json({
             'people_in': len(self.people_in),
-            'im_in': self.authenticated[websocket] in self.people_in
+            'im_in': self.authenticated[websocket] in self.people_in,
+            'username': self.authenticated[websocket],
         })
 
     async def broadcast_people_in(self):
         for websocket in self.active_websockets:
             try:
-                await websocket.send_json({
-                    'people_in': len(self.people_in),
-                    'im_in': self.authenticated[websocket] in self.people_in,
-                })
+                await self.send_user_data(websocket)
             except (IncompleteReadError, ConnectionClosedError):
                 # These exceptions might be raised on the app closure
                 # because at the time all websockets are disconnected.
