@@ -15,7 +15,20 @@
             <h1 class="text-center">Who's in?</h1>
         </div>
     </div>
+</div>
 
+<div class="container" id="connection-container">
+    <div class="row mb-3">
+        <div class="col">
+            <form class="d-flex justify-content-center" id="connection-form">
+                <input id="token-input" type="text" class="form-control w-25 me-2" placeholder="auth token" name="token" autocomplete="off" required>
+                <button class="btn btn-primary">Connect!</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="container d-none" id="app-container">
     <div class="row mb-3">
         <div class="col">
             <div class="form-check form-switch d-flex justify-content-center">
@@ -36,24 +49,59 @@
         crossorigin="anonymous"></script>
 
 <script>
-    const ws = new WebSocket('ws://localhost:8000/ws');
-
+    const connectionContainer = document.getElementById('connection-container');
+    const appContainer = document.getElementById('app-container');
+    const connectionForm = document.getElementById('connection-form');
+    const tokenInput = document.getElementById('token-input');
     const peopleInIndicator = document.getElementById('people-in-indicator');
-
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        console.log('ws >>', data);
-        peopleInIndicator.innerText = data.people_in;
-    };
-
     const imInCheckbox = document.getElementById('im-in-checkbox');
+
+    let ws;
+
+    function reset() {
+        appContainer.classList.add('d-none');
+        peopleInIndicator.innerText = '0';
+        imInCheckbox.checked = false;
+        tokenInput.value = '';
+        connectionContainer.classList.remove('d-none');
+    }
+
+    function connect(token) {
+        ws = new WebSocket('ws://localhost:8000/ws');
+        ws.onclose = (event) => {
+            console.debug('connection closed', event);
+            reset();
+        }
+        ws.onmessage = (event) => {
+            // A message arrival indicates authentication success here,
+            // therefore we hide the connection container and show the app.
+            connectionContainer.classList.add('d-none');
+            appContainer.classList.remove('d-none');
+            // Handle incoming data.
+            const data = JSON.parse(event.data);
+            console.debug('ws >>', data);
+            peopleInIndicator.innerText = data.people_in;
+        };
+        ws.onopen = (event) => {
+            console.debug('connection open', event);
+            ws.send(JSON.stringify({token}));
+        }
+    }
+
+    connectionForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        console.debug(event);
+        const formData = new FormData(event.target);
+        console.debug('token:', formData.get('token'));
+        connect(formData.get('token'));
+    });
 
     imInCheckbox.addEventListener('change', (event) => {
         if (event.currentTarget.checked) {
-            console.log("I'm in!");
+            console.debug("I'm in!");
             ws.send(JSON.stringify({im_in: true}));
         } else {
-            console.log("I'm out!");
+            console.debug("I'm out!");
             ws.send(JSON.stringify({im_in: false}));
         }
     });
