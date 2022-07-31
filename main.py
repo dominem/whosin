@@ -1,6 +1,6 @@
 import logging.config
 from asyncio import IncompleteReadError
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Set
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
@@ -41,8 +41,8 @@ class Authentication:
 
 class WebsocketApp:
     def __init__(self, auth: Authentication, logger: logging.Logger):
-        self.active_connections: List[WebSocket] = []
-        self.people_in: List[WebSocket] = []
+        self.active_websockets: List[WebSocket] = []
+        self.people_in: Set[str] = set()
         self.auth = auth
         self.authenticated: Dict[WebSocket, str] = {}
         self.logger = logger
@@ -50,7 +50,7 @@ class WebsocketApp:
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.append(websocket)
+        self.active_websockets.append(websocket)
 
     def authenticate(self, websocket: WebSocket, token: str):
         try:
@@ -62,27 +62,32 @@ class WebsocketApp:
             raise
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-        if websocket in self.people_in:
-            self.people_in.remove(websocket)
+        self.active_websockets.remove(websocket)
         if websocket in self.authenticated:
             self.authenticated.pop(websocket)
 
     def im_in(self, websocket: WebSocket):
-        if websocket not in self.people_in:
-            self.people_in.append(websocket)
+        self.people_in.add(self.authenticated[websocket])
 
     def im_out(self, websocket: WebSocket):
-        if websocket in self.people_in:
-            self.people_in.remove(websocket)
+        try:
+            self.people_in.remove(self.authenticated[websocket])
+        except KeyError:
+            pass
 
-    async def send_people_in(self, websocket: WebSocket):
-        await websocket.send_json({'people_in': len(self.people_in)})
+    async def send_user_data(self, websocket: WebSocket):
+        await websocket.send_json({
+            'people_in': len(self.people_in),
+            'im_in': self.authenticated[websocket] in self.people_in
+        })
 
     async def broadcast_people_in(self):
-        for connection in self.active_connections:
+        for websocket in self.active_websockets:
             try:
-                await connection.send_json({'people_in': len(self.people_in)})
+                await websocket.send_json({
+                    'people_in': len(self.people_in),
+                    'im_in': self.authenticated[websocket] in self.people_in,
+                })
             except (IncompleteReadError, ConnectionClosedError):
                 # These exceptions might be raised on the app closure
                 # because at the time all websockets are disconnected.
@@ -106,7 +111,7 @@ async def ws_index(websocket: WebSocket):
     try:
         auth_data = await websocket.receive_json()
         ws_app.authenticate(websocket, auth_data.get('token'))
-        await ws_app.send_people_in(websocket)
+        await ws_app.send_user_data(websocket)
         while True:
             data = await websocket.receive_json()
             if data.get('im_in') is True:

@@ -80,7 +80,12 @@
             // Handle incoming data.
             const data = JSON.parse(event.data);
             console.debug('ws >>', data);
-            peopleInIndicator.innerText = data.people_in;
+            if (data.people_in != null) {
+                peopleInIndicator.innerText = data.people_in;
+            }
+            if (data.im_in != null) {
+                imInCheckbox.checked = data.im_in;
+            }
         };
         ws.onopen = (event) => {
             console.debug('connection open', event);
